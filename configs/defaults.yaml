@@ -1,0 +1,306 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+experiment:
+  seed: 1 # TODO performance should be somewhat consistent across seeds but pls verify
+  name: "" # unused
+  device: "cuda:0"  # TODO: please change
+
+wandb:
+  project: "legged-gym" # TODO: please change
+  entity: "chris-pal" # TODO: please change
+#  name: "${experiment.name}" # unused
+
+env:
+  headless: True
+  # TODO Adjust this to your machine (more robot means faster training)
+  # ... fewer robots means less VRAM usage
+  num_envs: 4096
+  unit_obs: 45 # number of observations on a single robot
+  state_hist: 5 # length of state history
+  num_observations: 45
+  num_privileged_obs: 45
+  height_obs: 241 # number of points measured in heightmap obs
+  # 45*5+241# None # 241 # 187 (height) +51 (contact forces) + 3 (base lin vel)
+  #None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training).
+  # None is returned otherwise
+  num_actions: 12
+  env_spacing: 3.0  # not used with heightfields/trimeshes
+  send_timeouts: True  # send time out information to the algorithm
+  episode_length_s: 20  # episode length in seconds
+
+  priv_observe_contact_forces: True
+  priv_observe_base_lin_vel: True
+
+terrain:
+  # TODO TINKER WITH THIS (and this whole section in general):
+  #  mesh_type: "trimesh" # actual random terrain, slow to train
+  mesh_type: "plane" # flat plane, fast to train
+  horizontal_scale: 0.1  # [m]
+  vertical_scale: 0.005  # [m]
+  border_size: 15  # 25 # [m]
+  curriculum: True
+  static_friction: 1.0
+  dynamic_friction: 1.0
+  restitution: 0.0
+  # rough terrain only:
+  measure_heights: True # required
+  # 1mx1.6m rectangle (without center line)
+  measured_points_x: [ -0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8 ]
+  measured_points_y: [ -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5 ]
+  selected: False  # select a unique terrain type and pass all arguments
+  terrain_kwargs: None  # Dict of arguments for selected terrain
+  max_init_terrain_level: 2  # starting curriculum state
+  terrain_length: 8.0
+  terrain_width: 8.0
+  num_rows: 10  # number of terrain rows (levels)
+  num_cols: 10  # 20  # number of terrain cols (types)
+  num_sub_terrains: 0 # auto-populated, leave at 0
+  # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
+
+  # terrain_proportions: [0.0, 0.0, 0.0, 0.0, 1.0]
+  #  terrain_proportions: [ 0.0, 0.0, 0.1, 0.1, 0.8 ]
+  # TODO TINKER WITH THIS:
+  terrain_proportions: [ 0.1, 0.1, 0.35, 0.25, 0.2 ]
+  # trimesh only:
+  slope_treshold: 0.75  # slopes above this threshold will be corrected to vertical surfaces
+
+commands:
+  curriculum: False
+  max_curriculum: 1.0
+  num_commands: 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+  resampling_time: 10.0  # time before command are changed[s]
+  heading_command: True  # if true: compute ang vel command from heading error
+
+  ranges:
+    lin_vel_x: [ -1.0, 1.0 ]  # min max [m/s]
+    lin_vel_y: [ -1.0, 1.0 ]  # min max [m/s]
+    ang_vel_yaw: [ -1, 1 ]  # min max [rad/s]
+    heading: [ -3.14, 3.14 ]
+
+init_state:
+  pos: [ 0.0, 0.0, 0.34 ]  # x,y,z [m]
+  rot: [ 0.0, 0.0, 0.0, 1.0 ]  # x,y,z,w [quat]
+  lin_vel: [ 0.0, 0.0, 0.0 ]  # x,y,z [m/s]
+  ang_vel: [ 0.0, 0.0, 0.0 ]  # x,y,z [rad/s]
+  default_joint_angles: { # = target angles [rad] when action = 0.0
+    "FL_hip_joint": 0.1,
+    "RL_hip_joint": 0.1,
+    "FR_hip_joint": -0.1,
+    "RR_hip_joint": -0.1,
+    "FL_thigh_joint": 0.8,
+    "RL_thigh_joint": 1.0,
+    "FR_thigh_joint": 0.8,
+    "RR_thigh_joint": 1.0,
+    "FL_calf_joint": -1.5,
+    "RL_calf_joint": -1.5,
+    "FR_calf_joint": -1.5,
+    "RR_calf_joint": -1.5,
+  }
+
+control:
+  # PD Drive parameters:
+  control_type: "actuator_net"  # P: position, V: velocity, T: torques
+  # PD Drive parameters:
+  stiffness: { "joint": 20.0 }  # [N*m/rad]
+  damping: { "joint": 0.5 }  # [N*m*s/rad]
+  # action scale: target angle: actionScale * action + defaultAngle
+  action_scale: 0.25
+  hip_scale_reduction: 1.0
+  # decimation: Number of control action updates @ sim DT per policy DT
+  decimation: 4
+
+asset:
+  file: "{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/urdf/go1.urdf"
+  name: "go1"
+  foot_name: "foot"
+  penalize_contacts_on: [ "thigh", "calf" ]
+  terminate_after_contacts_on: [ "base" ]
+  self_collisions: 0  # 1 to disable, 0 to enable...bitwise filter
+  flip_visual_attachments: False
+  fix_base_link: False
+  
+  disable_gravity: False
+  # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+  collapse_fixed_joints: True
+  default_dof_drive_mode: 3  # see GymDofDriveModeFlags (0 is none, 1 is pos tgt, 2 is vel tgt, 3 effort)
+  # replace collision cylinders with capsules, leads to faster/more stable simulation
+  replace_cylinder_with_capsule: True
+  density: 0.001
+  angular_damping: 0.0
+  linear_damping: 0.0
+  max_angular_velocity: 1000.0
+  max_linear_velocity: 1000.0
+  armature: 0.0
+  thickness: 0.01
+
+domain_rand:
+  # TODO mess with these (a little bit, this is not your main focus)
+  rand_interval_s: 8.0
+  rand_interval: 0.0 # auto-populated, leave at 0
+  randomize_friction: True
+  friction_range: [ 0.05, 1.25 ]  # [0.5, 4.5]
+  randomize_base_mass: True  # False
+  added_mass_range: [ -1.0, 3.0 ]  # [-1., 1.]
+  randomize_base_com: True
+  com_pos_range: [ -0.1, 0.1 ]
+  gravity_rand_interval_s: 8.0
+  gravity_rand_interval: 0.0 # auto-populated, leave at 0
+  gravity_rand_duration: 0.0 # auto-populated, leave at 0
+  gravity_impulse_duration: 0.99
+  randomize_gravity: True
+  gravity_range: [ -1, 1 ]
+  push_robots: False
+  push_interval_s: 15
+  push_interval: None # auto-populated
+  max_push_vel_xy: 1.0
+  randomize_lag_timesteps: True
+  lag_timesteps: 6
+  
+  randomize_motor_strength: False
+  motor_strength_range: [ 0.9, 1.1 ]
+  randomize_motor_offset: True
+  motor_offset_range: [ -0.02, 0.02 ]
+
+rewards:
+  # TODO mess with these to generate different behaviors. This and the terrain is where you'll spend most of your time
+
+  soft_dof_pos_limit: 0.9
+  base_height_target: 0.34
+  # if true negative total rewards are clipped at zero (avoids early termination problems)
+  only_positive_rewards: True # unused
+
+  # TODO by decreasing this, you're making training harder but increase precision
+  #     ...by increasing it, you make training easier
+  tracking_sigma: 0.25  # tracking reward: exp(-error^2/sigma)
+
+  soft_dof_vel_limit: 1.0
+  soft_torque_limit: 1.0
+  max_contact_force: 100.0  # forces above this value are penalized
+  
+  scales:
+    # TODO these are all the reward terms. Feel free to try out different combos to check what works best
+    torques: -0.0002  # -0.0002
+    dof_pos_limits: -10.0
+    dof_pos: -0.05
+    action_rate: -0.01
+    orientation: -0.8  # -1.0 #-0.2 #-5.
+    ang_vel_xy: -0.05  # -0.05
+    base_height: -10.0  # -15.0 #-30
+    feet_air_time: 1.0  # 2.0 #1.0
+    feet_slip: -0.04
+    feet_clearance: -0.0001  # -0.001
+    stumble: -12.0  # -10.0
+    joint_power: -2e-5
+    power_distribution: -10e-5  # -10e-5
+    termination: -0.0
+    tracking_lin_vel: 1.0 # TODO this is the main thing you want to incentivize
+    tracking_ang_vel: 0.5 # TODO this is the second main thing you want to incentivize
+    lin_vel_z: -2.0
+    dof_vel: -0.0
+    dof_acc: -2.5e-7
+    collision: -1.0
+    feet_stumble: -0.0
+    stand_still: -0.0
+    feet_clearance_cmd_linear: -0.0
+    action_smoothness_1: 0.0
+    action_smoothness_2: 0.0
+
+
+
+
+normalization:
+  contact_force_range: [ 0.0, 50.0 ]
+  clip_observations: 100.0
+  clip_actions: 100.0
+  
+  obs_scales:
+    lin_vel: 1.0  # 2.0
+    ang_vel: 1.0  # 0.25
+    dof_pos: 1.0  # 1.0
+    dof_vel: 1.0  # 0.05
+    height_measurements: 5.0
+
+
+noise:
+  add_noise: True
+  noise_level: 1.0  # scales other values
+  
+  noise_scales:
+    dof_pos: 0.01
+    dof_vel: 1.5  # 1.5
+    lin_vel: 0.1
+    ang_vel: 0.2
+    gravity: 0.05
+    height_measurements: 0.1
+
+    # viewer camera:
+viewer:
+  ref_env: 0
+  pos: [ 1.0, -3.5, 2 ]  # [m]
+  lookat: [ 1.0, 0.5, 1.0 ]  # [m]
+
+sim:
+  dt: 0.005
+  substeps: 1
+  gravity: [ 0.0, 0.0, -9.81 ]  # [m/s^2]
+  up_axis: 1  # 0 is y, 1 is z
+  use_gpu_pipeline: True
+
+  physx:
+    use_gpu: True
+    num_threads: 10
+    solver_type: 1  # 0: pgs, 1: tgs
+    num_position_iterations: 4
+    num_velocity_iterations: 0
+    contact_offset: 0.01  # [m]
+    rest_offset: 0.0  # [m]
+    bounce_threshold_velocity: 0.5  # 0.5 [m/s]
+    max_depenetration_velocity: 1.0
+    max_gpu_contact_pairs: ${eval:'2 ** 23'}  # 2**24 -> needed for 8000 envs and more
+    default_buffer_size_multiplier: 5
+    contact_collection: 2  # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
+
+ppo:
+  policy:
+    init_noise_std: 1.0
+    actor_hidden_dims: [ 512, 256, 128 ]
+    critic_hidden_dims: [ 512, 256, 128 ]
+    activation: "elu"  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
+
+  algorithm:
+
+    # training params
+    value_loss_coef: 1.0
+    use_clipped_value_loss: True
+    clip_param: 0.2
+    entropy_coef: 0.01
+    num_learning_epochs: 5
+    num_mini_batches: 4  # mini batch size: num_envs*nsteps / nminibatches
+    learning_rate: 1.0e-3  # 5.e-4
+    schedule: "adaptive"  # could be adaptive, fixed
+    gamma: 0.99
+    lam: 0.95
+    desired_kl: 0.01
+    max_grad_norm: 1.0
+
+  runner:
+    seed: 1
+    num_steps_per_env: 24  # per iteration
+    # TODO: adjust this to train for longer: 1.5k should give you a working policy for flat ground
+    max_iterations: 1500  # number of policy updates
+
+    # logging
+    # TODO: turn this up to like 500 to reduce saving freq and save disk space.
+    save_interval: 100  # check for potential saves every this many iterations
+
+    # load and resume
+    load_run: -1  # -1: last run
+    checkpoint: -1  # -1: last saved model

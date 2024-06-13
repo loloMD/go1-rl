@@ -1,1 +1,38 @@
 - [ ] one bash file that does the whole downloading and installing setup
+- [ ] create new files: 
+  - [ ] train script
+  - [ ] play script with controller
+  - [ ] ppo implementation + actorcritic
+  - [ ] environment
+- [ ] test speed
+  - [x] iterations w/o actnet - same, so it's not AN
+  - [x] iterations w/ actnet - 55,052 steps/s - stabilize to 49,410 steps/s
+  - [x] test old codebase --> starts slower but then gets faster
+  - [x] diff of settings
+    - why are obs 45 and 46?
+    - terrain 10x10 vs 4x4?
+    - terrain proportions -> fewer and weird?
+    - randomize_lag_timesteps?
+    - add collapse_fixed_joints = True
+    - add replace_cylinder_with_capsule = (
+            True  # replace collision cylinders with capsules, leads to faster/more stable simulation
+        )
+    - density and damping are weird in PF (under asset)
+  - [x] diff of base
+  - [ ] diff of leggedgym - candidates
+    - asset params
+    - time buffer
+    - rewards
+    - domain rand
+    - logging
+    - terrain?
+  - [x] diff URDF
+  - [x] create hydra template
+  - [x] merge configs
+  - [x] merge base and env
+  - [x] copy over rl stuff
+  - [ ] performance
+  - [ ] simplify code (take out optional stuff)
+  - [ ] simplify settings
+  - [ ] change entity in wandb to be loaded from external file
+

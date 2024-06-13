@@ -11,12 +11,12 @@ setup(
     description="Isaac Gym environments for Legged Robots",
     install_requires=[
         "isaacgym",
-        "rsl-rl",
         "matplotlib",
         "tqdm",
-        "tensorboard",
         "numpy<1.20",
         "setuptools==59.5.0",
         "inputs",
+        "hydra-core",
+        "wandb",
     ],
 )
