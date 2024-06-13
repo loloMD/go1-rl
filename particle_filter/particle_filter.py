@@ -1,6 +1,7 @@
 import numpy as np 
 from copy import deepcopy 
 from scipy.stats import multivariate_normal
+import math 
 
 """
 Methodology: 
@@ -32,12 +33,14 @@ class LocalizationFilter:
         motion_var = 1e-2
         self.motion_cov = np.array([[motion_var, 0],  # observation noise covariance
                                  [0, motion_var]])
+        self.motion_cov_det = np.linalg.det(self.motion_cov)
         self.inv_motion_cov = np.linalg.inv(self.motion_cov)
 
         self.obs_mean = np.array([0, 0])   # observation noise mean 
         obs_var = 2
         self.obs_cov = np.array([[obs_var, 0],  # observation noise covariance
                                  [0, obs_var]])
+        self.obs_cov_det = np.linalg.det(self.obs_cov)
         self.inv_obs_cov = np.linalg.inv(self.obs_cov)
         
         self.init_particles()
@@ -73,13 +76,18 @@ class LocalizationFilter:
         args: 
             - delta_action: [delta x, delta y, delta theta ?]
         """
-        for particle_num in range(len(self.particles)): 
-            self.particles[particle_num][0] += delta_action[0]
-            self.particles[particle_num][1] += delta_action[1]
-            # self.particles[particle_num][2] = (self.particles[particle_num][2] + delta_action[2]) % (2*np.pi) # NOTE: theta
 
-            # inject motion noise 
-            self.particles[particle_num] = np.random.multivariate_normal(np.array(self.particles[particle_num]) + self.motion_mean, self.motion_cov)
+        all_noise = np.random.multivariate_normal(self.motion_mean, self.motion_cov, size=self.num_particles)
+        self.particles = np.array(self.particles) + delta_action.reshape((1, -1)) + all_noise
+
+        # INEFFICIENT: but working 
+        # for particle_num in range(len(self.particles)): 
+        #     self.particles[particle_num][0] += delta_action[0]
+        #     self.particles[particle_num][1] += delta_action[1]
+        #     # self.particles[particle_num][2] = (self.particles[particle_num][2] + delta_action[2]) % (2*np.pi) # NOTE: theta
+
+        #     # inject motion noise 
+        #     self.particles[particle_num] = np.random.multivariate_normal(np.array(self.particles[particle_num]) + self.motion_mean, self.motion_cov)
 
         return
     
@@ -88,13 +96,21 @@ class LocalizationFilter:
         Use the robot position meand from the estimated april tags to update the particle weights 
         and then update the particles via resampling
         """
-        updated_particle_weights = deepcopy(self.particle_weights)
-        for particle_num in range(len(self.particles)): 
+
+        pdf_normalizer = 1/(2*np.pi*np.sqrt(self.obs_cov_det))
+        pdf_exp = -0.5 * np.einsum('ij,ij->i', np.einsum('ik,kj->ij', self.particles - estimated_robot_position.reshape((1, -1)) ,  self.inv_obs_cov), (self.particles - estimated_robot_position.reshape((1, -1))))
+        obs_weight_update_multipliers = pdf_normalizer * np.exp(pdf_exp)
+        updated_particle_weights = self.particle_weights * obs_weight_update_multipliers
+
+        # INEFFICIENT: but working
+        # updated_particle_weights = deepcopy(self.particle_weights)
+        # for particle_num in range(len(self.particles)): 
             
-            obs_weight_update_multiplier = get_pdf(observed_position=np.array(estimated_robot_position), 
-                                                        particle_mean=np.array(self.particles[particle_num]), 
-                                                        particle_inv_cov=self.inv_obs_cov)
-            updated_particle_weights[particle_num] *= obs_weight_update_multiplier
+        #     obs_weight_update_multiplier = get_pdf(observed_position=np.array(estimated_robot_position), 
+        #                                                 particle_mean=np.array(self.particles[particle_num]), 
+        #                                                 particle_inv_cov=self.inv_obs_cov, 
+        #                                                 particle_obs_cov_det=self.obs_cov_det)
+        #     updated_particle_weights[particle_num] *= obs_weight_update_multiplier
             
 
         # normalize the weights 
@@ -107,7 +123,7 @@ class LocalizationFilter:
         tmp1=[val**2 for val in self.particle_weights]
         Neff=1/(np.array(tmp1).sum())
 
-        if True: #Neff < self.num_particles/3: # resample 
+        if Neff < self.num_particles/3: # resample 
             # first resampling approach - resampling according to the probabilities stored in the weights
             resampledStateIndex=np.random.choice(np.arange(self.num_particles), self.num_particles, p=self.particle_weights, replace=True)
 
@@ -145,13 +161,18 @@ class LocalizationFilter:
         return self.get_robot_position()
 
 ############### Helper Functions ################
-def get_pdf(observed_position, particle_mean, particle_inv_cov): 
+def get_pdf(observed_position, particle_mean, particle_inv_cov, particle_obs_cov_det): 
     """
     Get the probability density function of the particle position given the mean and covariance
     """
     distrib = multivariate_normal(mean=particle_mean, cov=particle_inv_cov)
-    return distrib.pdf(observed_position)
-    # return np.exp(-0.5 * (observed_position - particle_mean).T @ particle_inv_cov @ (observed_position - particle_mean))    
+
+    # testthing = 1/(2*np.pi*np.sqrt(particle_obs_cov_det)) * np.exp(-0.5 * (observed_position - particle_mean).T @ particle_inv_cov @ (observed_position - particle_mean))
+    # return testthing
+
+    output =  distrib.pdf(observed_position)
+    return output
+    
 
 def systematicResampling(weightArray):
     # N is the total number of samples
